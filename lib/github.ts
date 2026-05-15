@@ -9,6 +9,39 @@ interface GitHubRepo {
   language: string | null;
 }
 
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 500;
+
+/**
+ * Wraps fetch with exponential backoff retry logic.
+ * Retries ONLY on network errors, 429 Too Many Requests, and 5xx server errors.
+ * Returns immediately for all other statuses (2xx success, 3xx redirects, 4xx client errors).
+ */
+export async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  attempt = 0
+): Promise<Response> {
+  let res: Response | null = null;
+  try {
+    res = await fetch(url, options);
+  } catch (err) {
+    // Network error — retry if attempts remain, otherwise rethrow
+    if (attempt >= MAX_RETRIES) throw err;
+    const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return fetchWithRetry(url, options, attempt + 1);
+  }
+
+  // Only retry on 429 or 5xx — all other statuses are returned immediately
+  const shouldRetry = res.status === 429 || res.status >= 500;
+  if (!shouldRetry || attempt >= MAX_RETRIES) return res;
+
+  const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+  await new Promise((resolve) => setTimeout(resolve, delay));
+  return fetchWithRetry(url, options, attempt + 1);
+}
+
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql';
 const GITHUB_REST_URL = 'https://api.github.com';
 
@@ -91,7 +124,7 @@ export async function fetchGitHubContributions(
     }
   `;
 
-  const res = await fetch(GITHUB_GRAPHQL_URL, {
+  const res = await fetchWithRetry(GITHUB_GRAPHQL_URL, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify({ query, variables: { login: username } }),
@@ -133,7 +166,7 @@ export async function fetchUserProfile(
     if (cached) return cached;
   }
 
-  const res = await fetch(`${GITHUB_REST_URL}/users/${username}`, {
+  const res = await fetchWithRetry(`${GITHUB_REST_URL}/users/${username}`, {
     headers: getHeaders(),
     cache: 'no-store',
   });
@@ -163,10 +196,13 @@ export async function fetchUserRepos(
     if (cached) return cached;
   }
 
-  const res = await fetch(`${GITHUB_REST_URL}/users/${username}/repos?per_page=100&sort=pushed`, {
-    headers: getHeaders(),
-    cache: 'no-store',
-  });
+  const res = await fetchWithRetry(
+    `${GITHUB_REST_URL}/users/${username}/repos?per_page=100&sort=pushed`,
+    {
+      headers: getHeaders(),
+      cache: 'no-store',
+    }
+  );
 
   if (!res.ok) {
     throw new Error(`GitHub REST API error: ${res.status}`);
