@@ -183,13 +183,16 @@ Caching is handled entirely at the HTTP response layer (`Cache-Control: s-maxage
 ## 🏗️ Architecture & Tech Stack
 
 ```
-app/api/streak/route.ts     →  Next.js 16 Edge-compatible API Route
-lib/github.ts               →  GitHub GraphQL API client
-lib/calculate.ts            →  Streak algorithm (current + longest + grace period)
-lib/svg/generator.ts        →  3D Isometric SVG renderer + CSS animations
-lib/svg/themes.ts           →  Prebuilt theme palette system
-utils/time.ts               →  UTC midnight synchronization utilities
-types/index.ts              →  TypeScript interfaces (StreakStats, BadgeParams, BadgeTheme)
+app/api/streak/route.ts       →  Next.js 16 Edge-compatible API Route
+app/api/track-user/route.ts   →  User tracking API — records GitHub usernames to MongoDB
+lib/github.ts                 →  GitHub GraphQL API client
+lib/calculate.ts              →  Streak algorithm (current + longest + grace period)
+lib/mongodb.ts                →  Cached MongoDB connection utility (serverless-safe)
+lib/svg/generator.ts          →  3D Isometric SVG renderer + CSS animations
+lib/svg/themes.ts             →  Prebuilt theme palette system
+models/User.ts                →  Mongoose User schema
+utils/time.ts                 →  UTC midnight synchronization utilities
+types/index.ts                →  TypeScript interfaces (StreakStats, BadgeParams, BadgeTheme)
 ```
 
 | Layer           | Technology                               | Purpose                                                            |
@@ -197,6 +200,7 @@ types/index.ts              →  TypeScript interfaces (StreakStats, BadgeParams
 | **Framework**   | Next.js 16 (App Router)                  | API routes, edge deployment                                        |
 | **Language**    | TypeScript 5                             | Type-safe parameters and interfaces                                |
 | **Data Source** | GitHub GraphQL API v4                    | `contributionsCollection` query                                    |
+| **Database**    | MongoDB + Mongoose                       | Tracks GitHub usernames of users who generate a monolith           |
 | **Rendering**   | Pure SVG + SVG Filters                   | `<feGaussianBlur>` for the glow effect                             |
 | **Animation**   | SVG `<animate>`                          | Radar scan line + current-day block pulsing, no external libraries |
 | **Typography**  | Google Fonts (Syncopate + Space Grotesk) | Loaded inline via `@import`                                        |
@@ -215,7 +219,12 @@ git clone https://github.com/JhaSourav07/commitpulse.git && cd commitpulse
 npm install
 
 # 3. Create your environment file
-echo "GITHUB_PAT=your_token_here" > .env.local
+cat > .env.local << 'EOF'
+GITHUB_TOKEN=your_github_pat_here
+
+# Optional — enables user tracking (see below)
+# MONGODB_URI=mongodb+srv://...
+EOF
 
 # 4. Start the development server
 npm run dev
@@ -224,6 +233,24 @@ npm run dev
 > **📌 Token Scope:** Your GitHub Personal Access Token needs the `read:user` scope only. No write permissions required.
 
 Then visit: `http://localhost:3000/api/streak?user=YOUR_USERNAME`
+
+### Optional: MongoDB User Tracking
+
+CommitPulse records the GitHub username of everyone who generates a monolith from the landing page into a MongoDB collection. This is **entirely optional for local development** — the app works perfectly without it.
+
+If `MONGODB_URI` is not set, the `/api/track-user` endpoint will log a warning and skip the database write gracefully:
+
+```
+WARN: MONGODB_URI is not set. Bypassing user tracking for local development.
+```
+
+To enable tracking locally, add your connection string to `.env.local`:
+
+```env
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/commitpulse
+```
+
+For production (Vercel), add `MONGODB_URI` to your project's **Environment Variables** settings.
 
 ---
 
