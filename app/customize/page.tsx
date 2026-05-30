@@ -246,7 +246,7 @@ export default function CustomizePage(): ReactElement {
           <Link
             href="/"
             id="back-to-home-link"
-            className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-black dark:text-white/40 dark:hover:text-white transition-colors group"
+            className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-black dark:text-white/55 dark:hover:text-white transition-colors group"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -283,7 +283,7 @@ export default function CustomizePage(): ReactElement {
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-black dark:text-white leading-tight mb-2">
             Fine-tune your monolith.
           </h1>
-          <p className="text-gray-600 dark:text-white/50 text-sm max-w-xl">
+          <p className="text-gray-600 dark:text-white/65 text-sm max-w-xl">
             Every change below updates the preview in real-time. Copy the export snippet when
             you&apos;re done. No extra steps required.
           </p>
@@ -403,7 +403,7 @@ export default function CustomizePage(): ReactElement {
                       <p className="text-lg font-semibold tracking-tight text-black dark:text-white">
                         Enter a GitHub username to preview
                       </p>
-                      <p className="mt-2 max-w-md text-sm leading-relaxed text-gray-500 dark:text-white/45">
+                      <p className="mt-2 max-w-md text-sm leading-relaxed text-gray-500 dark:text-white/65">
                         The live badge preview will appear here once a username is added.
                       </p>
                     </div>
@@ -411,7 +411,7 @@ export default function CustomizePage(): ReactElement {
                 </InteractiveViewer>
               </div>
 
-              <p className="mt-3 text-[11px] text-gray-500 dark:text-white/30 text-center">
+              <p className="mt-3 text-[11px] text-gray-500 dark:text-white/55 text-center">
                 {hasUsername
                   ? isRandomTheme
                     ? 'Random theme changes on every page load and disables caching'
@@ -433,7 +433,7 @@ export default function CustomizePage(): ReactElement {
 
             {/* URL breakdown */}
             <div className="bg-white/70 backdrop-blur-xl border border-black/10 dark:bg-black/35 dark:border-white/10 rounded-[1.75rem] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-500 dark:text-white/30 mb-4">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-500 dark:text-white/55 mb-4">
                 Active Parameters
               </p>
               <div className="flex flex-wrap gap-2">
@@ -446,7 +446,7 @@ export default function CustomizePage(): ReactElement {
                         className="inline-flex items-center gap-1.5 bg-gray-100/80 backdrop-blur-md border border-black/10 dark:bg-white/[0.03] dark:border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono"
                       >
                         <span className="text-purple-400">{decodeURIComponent(k)}</span>
-                        <span className="text-gray-400 dark:text-white/20">=</span>
+                        <span className="text-gray-400 dark:text-white/55">=</span>
                         <span className="text-emerald-600 dark:text-emerald-400">
                           {decodeURIComponent(v)}
                         </span>
