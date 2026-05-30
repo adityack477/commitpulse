@@ -71,7 +71,6 @@ describe('getSecondsUntilUTCMidnight', () => {
     expect(Number.isInteger(result)).toBe(true);
     expect(result).toBe(0);
   });
-
 });
 
 it('returns positive seconds for every hour of day', () => {
