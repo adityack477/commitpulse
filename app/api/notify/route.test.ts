@@ -102,7 +102,7 @@ describe('POST /api/notify', () => {
 
   it('returns 500 when MONGODB_URI is not set in production', async () => {
     delete process.env.MONGODB_URI;
-    process.env.NODE_ENV = 'production';
+    vi.stubEnv('NODE_ENV', 'production');
     const res = await POST(makeRequest('POST', { username: 'testuser', email: 'a@b.com' }));
     expect(res.status).toBe(500);
     const data = await res.json();
@@ -111,7 +111,7 @@ describe('POST /api/notify', () => {
 
   it('bypasses gracefully when MONGODB_URI is not set in development', async () => {
     delete process.env.MONGODB_URI;
-    process.env.NODE_ENV = 'development';
+    vi.stubEnv('NODE_ENV', 'development');
     const res = await POST(makeRequest('POST', { username: 'testuser', email: 'a@b.com' }));
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -199,14 +199,14 @@ describe('GET /api/notify', () => {
 
   it('returns 500 when MONGODB_URI is not set in production', async () => {
     delete process.env.MONGODB_URI;
-    process.env.NODE_ENV = 'production';
+    vi.stubEnv('NODE_ENV', 'production');
     const res = await GET(makeRequest('GET', undefined, 'user=testuser'));
     expect(res.status).toBe(500);
   });
 
   it('bypasses gracefully when MONGODB_URI is not set in development', async () => {
     delete process.env.MONGODB_URI;
-    process.env.NODE_ENV = 'development';
+    vi.stubEnv('NODE_ENV', 'development');
     const res = await GET(makeRequest('GET', undefined, 'user=testuser'));
     const data = await res.json();
     expect(data.success).toBe(false);
