@@ -23,10 +23,7 @@ const calendar = {
   weeks: Array.from({ length: 14 }, (_, weekIndex) => ({
     contributionDays: Array.from({ length: 7 }, (_, dayIndex) => ({
       contributionCount: Math.floor(Math.random() * 20),
-      date: new Date(
-        startDate.getTime() +
-          (weekIndex * 7 + dayIndex) * 24 * 60 * 60 * 1000
-      )
+      date: new Date(startDate.getTime() + (weekIndex * 7 + dayIndex) * 24 * 60 * 60 * 1000)
         .toISOString()
         .split('T')[0],
     })),
