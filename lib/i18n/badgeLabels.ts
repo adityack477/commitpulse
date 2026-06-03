@@ -77,13 +77,6 @@ export const labels: Record<string, BadgeLabels> = {
     COMMITS_THIS_MONTH: 'COMMITS DIESEN MONAT',
     VS_LAST_MONTH: 'im Vgl. zum Vormonat',
   },
-  de: {
-    CURRENT_STREAK: 'AKTUELLE_SERIE',
-    ANNUAL_SYNC_TOTAL: 'JAHRES_GESAMT',
-    PEAK_STREAK: 'LÄNGSTE_SERIE',
-    COMMITS_THIS_MONTH: 'COMMITS DIESEN MONAT',
-    VS_LAST_MONTH: 'vs. letzten Monat',
-  },
 };
 
 export const supportedLanguages = Object.keys(labels) as [
