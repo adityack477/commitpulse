@@ -102,21 +102,16 @@ describe('Heatmap Error Resilience', () => {
     expect(screen.getByText(/something went wrong/i)).toBeDefined();
   });
 
-  it('handles unexpected service/database exceptions safely', () => {
+  it('handles exceptions from Heatmap safely and logs telemetry', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const BrokenHeatmap = () => {
-      throw new Error('Database connection failed');
-    };
 
     render(
       <TestErrorBoundary>
-        <BrokenHeatmap />
+        <Heatmap data={undefined as unknown as ActivityData[]} />
       </TestErrorBoundary>
     );
 
     expect(screen.getByText(/something went wrong/i)).toBeDefined();
-
     expect(console.error).toHaveBeenCalled();
   });
 
