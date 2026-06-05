@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import DashboardSkeleton from './DashboardSkeleton';
 import { X, RefreshCw, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -319,6 +320,11 @@ export default function DashboardClient({
   compareData = null,
   period,
 }: DashboardClientProps) {
+  const isLoading = useSyncExternalStore(
+    () => () => {},
+    () => false,
+    () => true
+  );
   const [secondUserData, setSecondUserData] = useState<DashboardData | null>(compareData);
   const [isCompareMode, setIsCompareMode] = useState(Boolean(compareData));
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -531,6 +537,14 @@ export default function DashboardClient({
     } else if (secondUserData.stats.currentStreak > initialData.stats.currentStreak) {
       badgesB.push('Strongest Streak');
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-4 md:p-6 lg:p-8 min-h-screen bg-black text-white">
+        <DashboardSkeleton />
+      </div>
+    );
   }
 
   return (
