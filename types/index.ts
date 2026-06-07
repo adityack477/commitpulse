@@ -75,6 +75,9 @@ export interface ContributionCalendar {
   /** Array of weekly contribution data covering the queried date range. */
   weeks: ContributionWeek[];
 
+  /** Optional aggregate repository contribution count preserved from mocked or extended calendar payloads. */
+  repoContributions?: number;
+
   /** Timestamp of the last successful GraphQL API sync. Used for delta updates. */
   lastSyncedAt?: string;
 }
@@ -90,11 +93,41 @@ export interface RepoContribution {
 }
 
 /**
+ * A repository that the user has contributed to, as returned by the
+ * `repositoriesContributedTo` GraphQL query.
+ */
+export interface ContributedRepo {
+  /** Repository name (without owner prefix). */
+  name: string;
+
+  /** Full repository identifier including owner (e.g. "owner/repo"). */
+  nameWithOwner: string;
+
+  /** Owner of the repository. */
+  owner: { login: string };
+
+  /** Number of stars on the repository. */
+  stargazerCount: number;
+
+  /** Number of forks of the repository. */
+  forkCount: number;
+
+  /** Primary programming language of the repository, if any. */
+  primaryLanguage: { name: string } | null;
+
+  /** ISO 8601 timestamp of the last update. */
+  updatedAt: string;
+}
+
+/**
  * Extended contribution data including both the calendar and repository-specific contributions.
  */
 export interface ExtendedContributionData {
   calendar: ContributionCalendar;
   repoContributions: RepoContribution[];
+  totalPRs?: number;
+  totalIssues?: number;
+  isOfflineFallback?: boolean;
 }
 
 /**
@@ -124,6 +157,8 @@ export interface MonthlyStats {
 export interface BadgeParams {
   /** GitHub username whose contribution data will be fetched and rendered. Required. */
   user: string;
+
+  label?: boolean;
   /** GitHub username of the opponent to compare against. */
   versus?: string;
 
@@ -172,8 +207,8 @@ export interface BadgeParams {
   /** Language/locale code for stat labels (e.g. 'en', 'fr', 'ja'). Defaults to 'en'. */
   lang?: string;
 
-  /** Badge layout variant. 'default' shows the isometric monolith; 'monthly' shows month-over-month stats; 'heatmap' shows a flat 2D contribution heatmap; 'pulse' shows a heartbeat sparkline. */
-  view?: 'default' | 'monthly' | 'heatmap' | 'pulse';
+  /** Badge layout variant. 'default' shows the isometric monolith; 'monthly' shows month-over-month stats; 'heatmap' shows a flat 2D contribution heatmap; 'pulse' shows a heartbeat sparkline; 'languages' shows a 3D isometric city of top programming languages. */
+  view?: 'default' | 'monthly' | 'heatmap' | 'pulse' | 'languages';
 
   /** Format for the monthly delta indicator. 'percent' shows %, 'absolute' shows raw count, 'both' shows both. */
   delta_format?: 'percent' | 'absolute' | 'both';
@@ -209,11 +244,30 @@ export interface BadgeParams {
    */
   shading?: boolean;
 
+  /**
+   * Global opacity scalar applied to all tower face fill-opacity values (0.1–1.0).
+   * Default is 1.0 (fully opaque, current behavior). Values below 0.1 are clamped
+   * to 0.1; values above 1.0 are clamped to 1.0.
+   */
+  opacity?: number;
+
   /** Opt-in to show volumetric gradients on the monolith floor. */
   gradient?: boolean;
 
+  /** Custom gradient color stops as comma-separated hex colors (e.g. 'ff6b35,ff007f,7000ff'). Requires at least 2 valid colors. */
+  gradient_stops?: string;
+
+  /** Custom gradient direction: 'vertical', 'horizontal', or 'diagonal'. Only used when gradient=true. */
+  gradient_dir?: 'vertical' | 'horizontal' | 'diagonal';
+
   disable_particles?: boolean;
+  animate?: boolean;
   glow?: boolean;
+  isOfflineFallback?: boolean;
+  badges?: boolean;
+
+  /** @internal Temporary property to track custom gradient ID during SVG generation. */
+  __customGradientId?: string;
 }
 
 export interface GraphNode {

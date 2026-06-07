@@ -1,12 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { fallbackCopyToClipboard } from '@/utils/clipboard';
+import { useCallback, useEffect, useRef, useState, Suspense, type ReactElement } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { validateGitHubUsername } from '@/lib/validations';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ControlsPanel } from './components/ControlsPanel';
 import { AdvancedSettingsPanel } from './components/AdvancedSettingsPanel';
 import { ExportPanel } from './components/ExportPanel';
 import InteractiveViewer from '@/components/InteractiveViewer';
+import { Footer } from '@/app/components/Footer';
 import DOMPurify from 'dompurify';
 import type {
   ExportFormat,
@@ -18,11 +22,33 @@ import type {
   Language,
   Timezone,
 } from './types';
+import { useDebounce } from '@/hooks/useDebounce';
 import { getExportSnippet, buildQueryParams } from './utils';
+
+function readNumericSearchParam(
+  searchParams: URLSearchParams,
+  key: string,
+  fallback: number | '',
+  min?: number,
+  max?: number
+): number | '' {
+  const raw = searchParams.get(key);
+  if (!raw) return fallback;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+    return fallback;
+  }
+
+  if (min !== undefined && parsed < min) return fallback;
+  if (max !== undefined && parsed > max) return fallback;
+
+  return parsed;
+}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function CustomizePage(): ReactElement {
+function CustomizePageInner(): ReactElement {
   const [username, setUsername] = useState('');
   const [theme, setTheme] = useState('dark');
   const [bgHex, setBgHex] = useState('');
@@ -54,6 +80,44 @@ export default function CustomizePage(): ReactElement {
   const trimmedUsername = username.trim();
   const hasUsername = trimmedUsername.length > 0;
   const isRandomTheme = theme === 'random';
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // On mount: initialize state from URL search params
+  // Multiple setState calls are intentional here — we sync every customization
+  // control from the URL once on mount so that shared/bookmarked links restore
+  // the full editor state. Each setter corresponds to a single URL param and
+  // they all run synchronously in a single effect pass, so React batches them
+  // into one re-render. No stale-dependency risk: deps are intentionally [].
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const u = searchParams.get('user') ?? '';
+    const t = searchParams.get('theme') ?? 'dark';
+    setUsername(u);
+    setTheme(t);
+    setBgHex(searchParams.get('bg') ?? '');
+    setAccentHex(searchParams.get('accent') ?? '');
+    setTextHex(searchParams.get('text') ?? '');
+    setScale((searchParams.get('scale') as Scale) ?? 'linear');
+    setSpeed(searchParams.get('speed') ?? '8s');
+    setFont((searchParams.get('font') as Font) ?? 'Inter');
+    setYear(searchParams.get('year') ?? '');
+    setRadius(readNumericSearchParam(searchParams, 'radius', 8, 0, 50) as number);
+    setSize((searchParams.get('size') as BadgeSize) ?? 'medium');
+    setHideTitle(searchParams.get('hide_title') === 'true');
+    setHideBackground(searchParams.get('hide_background') === 'true');
+    setHideStats(searchParams.get('hide_stats') === 'true');
+    setViewMode((searchParams.get('view') as ViewMode) ?? 'default');
+    setDeltaFormat((searchParams.get('delta_format') as DeltaFormat) ?? 'percent');
+    setBadgeWidth(readNumericSearchParam(searchParams, 'width', '', 100, 1200));
+    setBadgeHeight(readNumericSearchParam(searchParams, 'height', '', 80, 800));
+    setGrace(readNumericSearchParam(searchParams, 'grace', 1, 0, 7) as number);
+    setLanguage((searchParams.get('lang') as Language) ?? 'en');
+    setTimezone((searchParams.get('tz') as Timezone) ?? 'UTC');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     return () => {
@@ -111,14 +175,36 @@ export default function CustomizePage(): ReactElement {
     language,
     timezone,
   });
-  const previewSrc = `/api/streak?${queryString}`;
+
+  // ─── DEBOUNCE ALL PAGE PARAMETERS AT ONCE ──────────────────────────────────
+  // Instead of debouncing a single string, we pass the built query string
+  // through the hook to hold off any API fetch request during rapid changes!
+  const debouncedQueryString = useDebounce(queryString, 400);
+
+  const previewSrc = `/api/streak?${debouncedQueryString}`;
+
+  // On change sync state to URL
+  useEffect(() => {
+    if (!queryString) return;
+    router.replace(`/customize?${queryString}`, { scroll: false });
+  }, [queryString, router]);
 
   useEffect(() => {
+    // Safe: resets error state as the first synchronous step when any preview
+    // dependency changes. The reset always precedes any async fetch or early
+    // return so there is no intermediate render with stale error text.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setErrorMessage(null);
     if (!hasUsername) {
       setSvgContent('');
       setSvgState('idle');
+      return;
+    }
+
+    if (!validateGitHubUsername(trimmedUsername)) {
+      setSvgContent('');
+      setSvgState('error');
+      setErrorMessage("That doesn't look like a valid GitHub username");
       return;
     }
 
@@ -144,18 +230,40 @@ export default function CustomizePage(): ReactElement {
       })
       .then((text) => {
         if (!text) return;
-        // Sanitize SVG using DOMPurify with the SVG profile.
-        // - Forbid risky tags like foreignObject and embedded content
-        // - Forbid xlink:href to avoid external references
-        // - Use a conservative URI whitelist to prevent javascript: URIs
+
+        // Ensure we strictly sanitize the raw SVG markup using DOMPurify,
+        // while preserving the necessary layout and structural attributes our SVG requires.
         const sanitized = DOMPurify.sanitize(text, {
           USE_PROFILES: { svg: true },
-          FORBID_TAGS: ['foreignObject', 'iframe', 'object', 'embed', 'script'],
-          FORBID_ATTR: ['xlink:href'],
-          ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|data):|#)/i,
+          ADD_TAGS: ['filter', 'feGaussianBlur', 'feMerge', 'feMergeNode', 'feComposite'],
+          ADD_ATTR: [
+            'viewBox',
+            'd',
+            'width',
+            'height',
+            'rx',
+            'ry',
+            'transform-origin',
+            'transform-box',
+            'animation-delay',
+            'xmlns',
+            'font-family',
+            'font-size',
+            'font-weight',
+            'fill-opacity',
+            'filter',
+            'stdDeviation',
+            'result',
+            'in',
+            'in2',
+            'operator',
+            'x',
+            'y',
+            'id',
+          ],
         });
 
-        setSvgContent(sanitized as string);
+        setSvgContent(sanitized);
         setSvgState('loaded');
         setErrorMessage(null);
       })
@@ -166,33 +274,10 @@ export default function CustomizePage(): ReactElement {
       });
 
     return () => controller.abort();
-  }, [previewSrc, hasUsername]);
+    // By changing this list, useEffect only runs when previewSrc finishes debouncing
+  }, [previewSrc, hasUsername, trimmedUsername]);
 
   const exportSnippet = getExportSnippet(exportFormat, queryString);
-
-  const fallbackCopyToClipboard = (text: string): boolean => {
-    try {
-      const textArea = document.createElement('textarea');
-
-      textArea.value = text;
-      textArea.style.position = 'fixed';
-      textArea.style.opacity = '0';
-      textArea.style.pointerEvents = 'none';
-
-      document.body.appendChild(textArea);
-
-      textArea.focus();
-      textArea.select();
-
-      const successful = document.execCommand('copy');
-
-      document.body.removeChild(textArea);
-
-      return successful;
-    } catch {
-      return false;
-    }
-  };
 
   const announceCopyStatus = useCallback((message: string): void => {
     setCopyStatusMessage('');
@@ -206,7 +291,15 @@ export default function CustomizePage(): ReactElement {
 
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(exportSnippet);
+        try {
+          await navigator.clipboard.writeText(exportSnippet);
+        } catch {
+          const copiedSuccessfully = fallbackCopyToClipboard(exportSnippet);
+
+          if (!copiedSuccessfully) {
+            throw new Error('Fallback clipboard copy failed.');
+          }
+        }
       } else {
         const copiedSuccessfully = fallbackCopyToClipboard(exportSnippet);
 
@@ -236,6 +329,10 @@ export default function CustomizePage(): ReactElement {
         `Unable to copy the ${exportFormat === 'markdown' ? 'Markdown' : 'HTML'} snippet.`
       );
     }
+  };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleDownloadimage = () => {
+    alert('Download image functionality coming soon!');
   };
 
   return (
@@ -308,7 +405,7 @@ export default function CustomizePage(): ReactElement {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="bg-white/70 backdrop-blur-xl border border-black/10 dark:bg-black/35 dark:border-white/10 rounded-[1.75rem] p-6 flex flex-col gap-6 sticky top-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+            className="bg-white/70 backdrop-blur-xl border border-black/10 dark:bg-black/35 dark:border-white/10 rounded-[1.75rem] p-6 flex flex-col gap-6 sticky top-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] min-w-0"
           >
             <ControlsPanel
               username={username}
@@ -346,7 +443,7 @@ export default function CustomizePage(): ReactElement {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.15 }}
-            className="flex flex-col gap-6"
+            className="flex flex-col gap-6 min-w-0"
           >
             {/* Live Preview */}
             <div className="bg-white/70 backdrop-blur-xl border border-black/10 dark:bg-black/35 dark:border-white/10 rounded-[1.75rem] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
@@ -354,7 +451,29 @@ export default function CustomizePage(): ReactElement {
                 Live Preview
               </p>
 
-              <div className="group relative">
+              {/* ─── MOVING THE INTERACTION LISTENER DIRECTLY TO THE OUTER WRAPPER CONTAINER ROW ─── */}
+              <div
+                className="group relative"
+                onClick={(e) => {
+                  // Only trigger the focus highlight workflow if the placeholder box is actively rendering
+                  if (!hasUsername) {
+                    e.stopPropagation();
+                    const input = document.getElementById('username-input') as HTMLInputElement;
+                    if (input) {
+                      input.focus();
+                      input.style.outline = '4px solid #10b981';
+                      input.style.outlineOffset = '2px';
+                      input.style.transform = 'scale(1.02)';
+                      input.style.transition = 'all 0.3s ease';
+
+                      setTimeout(() => {
+                        input.style.outline = 'none';
+                        input.style.transform = 'scale(1)';
+                      }, 1000);
+                    }
+                  }
+                }}
+              >
                 {/* Glow ring */}
                 <div className="absolute -inset-px bg-gradient-to-br from-emerald-500/20 to-purple-500/20 rounded-[1.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-700 blur-lg pointer-events-none" />
 
@@ -369,6 +488,14 @@ export default function CustomizePage(): ReactElement {
                           Loading preview...
                         </div>
                       )}
+                      {svgState === 'error' &&
+                        errorMessage === "That doesn't look like a valid GitHub username" && (
+                          <div className="flex flex-col items-center justify-center gap-2 text-center py-8">
+                            <p className="text-sm font-semibold text-red-500 dark:text-red-400">
+                              {errorMessage}
+                            </p>
+                          </div>
+                        )}
                       {svgState === 'error' && errorMessage === 'GitHub user not found' && (
                         <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
                           <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-red-500/20 bg-red-500/10 shadow-inner">
@@ -396,16 +523,18 @@ export default function CustomizePage(): ReactElement {
                           </div>
                         </div>
                       )}
-                      {svgState === 'error' && errorMessage !== 'GitHub user not found' && (
-                        <div className="flex flex-col items-center justify-center gap-2 text-center py-8">
-                          <p className="text-sm font-semibold text-red-500 dark:text-red-400">
-                            Failed to load badge
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-white/45">
-                            The API may be unavailable. Please try again.
-                          </p>
-                        </div>
-                      )}
+                      {svgState === 'error' &&
+                        errorMessage !== 'GitHub user not found' &&
+                        errorMessage !== "That doesn't look like a valid GitHub username" && (
+                          <div className="flex flex-col items-center justify-center gap-2 text-center py-8">
+                            <p className="text-sm font-semibold text-red-500 dark:text-red-400">
+                              Failed to load badge
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-white/45">
+                              The API may be unavailable. Please try again.
+                            </p>
+                          </div>
+                        )}
                       {svgState === 'loaded' && svgContent && (
                         <motion.div
                           initial={{ opacity: 0, scale: 0.95 }}
@@ -420,8 +549,8 @@ export default function CustomizePage(): ReactElement {
                       )}
                     </div>
                   ) : (
-                    <div className="relative z-10 flex w-full max-w-xl flex-col items-center justify-center rounded-[1.25rem] border border-dashed border-black/10 bg-gray-100/80 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.03] px-6 py-12 text-center">
-                      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-black/10 bg-gray-100/80 dark:border-white/10 dark:bg-white/[0.04] text-gray-500 dark:text-emerald-300/70">
+                    <div className="relative z-10 flex w-full max-w-xl flex-col items-center justify-center rounded-[1.25rem] border border-dashed border-black/10 bg-gray-100/80 backdrop-blur-md dark:border-white/10 dark:bg-white/3 hover:border-black/30 dark:hover:border-white/30 transition-colors cursor-pointer px-6 py-12 text-center">
+                      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-black/10 bg-gray-100/80 dark:border-white/10 dark:bg-white/4 text-gray-500 dark:text-emerald-300/70">
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           className="h-6 w-6"
@@ -480,11 +609,11 @@ export default function CustomizePage(): ReactElement {
                     return (
                       <span
                         key={k}
-                        className="inline-flex items-center gap-1.5 bg-gray-100/80 backdrop-blur-md border border-black/10 dark:bg-white/[0.03] dark:border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono"
+                        className="inline-flex items-center gap-1.5 bg-gray-100/80 backdrop-blur-md border border-black/10 dark:bg-white/[0.03] dark:border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono break-all"
                       >
-                        <span className="text-purple-400">{decodeURIComponent(k)}</span>
-                        <span className="text-gray-400 dark:text-white/55">=</span>
-                        <span className="text-emerald-600 dark:text-emerald-400">
+                        <span className="text-purple-400 break-all">{decodeURIComponent(k)}</span>
+                        <span className="text-gray-400 dark:text-white/55 shrink-0">=</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 break-all">
                           {decodeURIComponent(v)}
                         </span>
                       </span>
@@ -500,7 +629,7 @@ export default function CustomizePage(): ReactElement {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="bg-white/70 backdrop-blur-xl border border-black/10 dark:bg-black/35 dark:border-white/10 rounded-[1.75rem] p-6 flex flex-col gap-6 sticky top-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] xl:col-start-3"
+            className="bg-white/70 backdrop-blur-xl border border-black/10 dark:bg-black/35 dark:border-white/10 rounded-[1.75rem] p-6 flex flex-col gap-6 sticky top-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] xl:col-start-3 min-w-0"
           >
             <AdvancedSettingsPanel
               hideTitle={hideTitle}
@@ -527,6 +656,15 @@ export default function CustomizePage(): ReactElement {
           </motion.aside>
         </div>
       </div>
+      <Footer />
     </div>
+  );
+}
+
+export default function CustomizePage(): ReactElement {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-transparent" />}>
+      <CustomizePageInner />
+    </Suspense>
   );
 }
