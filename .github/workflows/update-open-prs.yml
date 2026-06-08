@@ -18,7 +18,7 @@ jobs:
 
       - name: Fetch and update open PRs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           echo "Fetching open pull requests..."
           # Retrieve numbers of all open pull requests
