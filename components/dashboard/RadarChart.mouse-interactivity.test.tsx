@@ -70,8 +70,7 @@ describe('RadarChart mouse interactivity contract', () => {
     );
 
     expect(screen.getAllByText('Rust').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('TypeScript').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('JavaScript').length).toBeGreaterThan(0);
+    expect(screen.getByText('50%')).toBeInTheDocument();
   });
 
   it('renders zero percentages for languages missing in one dataset', () => {
